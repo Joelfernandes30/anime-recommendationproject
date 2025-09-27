@@ -1,0 +1,7 @@
+aenv
+artifacts/raw
+artifacts/model
+artifacts/model_checkpoint
+artifacts/processed
+artifacts/weights
+annie_movie_recommendation.egg-info
