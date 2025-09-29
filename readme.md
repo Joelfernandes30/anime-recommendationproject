@@ -273,6 +273,39 @@ spec:
 * review and create (wait for it to create)
 
 ---
+
+## 13. Install Kubectl in VM machine
+```
+# Update packages
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl
+
+# Add the Kubernetes apt repo GPG key
+sudo curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/kubernetes.gpg
+
+# Add the Kubernetes apt repo
+echo "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Update and install kubectl
+sudo apt-get update
+sudo apt-get install -y kubectl
+
+
+sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+
+
+sudo apt-get update && sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+
+
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+echo 'export USE_GKE_GCLOUD_AUTH_PLUGIN=True' >> ~/.bashrc
+
+
+```
+
+
 ## 📜 13. Final Jenkinsfile (Build & Push to GCR and deploy to GKE)
 
 ```
@@ -283,7 +316,7 @@ pipeline {
         VENV_DIR = 'venv'
         GCP_PROJECT = 'probable-bebop-471914-q2'  //your project name
         GCLOUD_PATH = "/var/jenkins_home/google-cloud-sdk/bin"
-        KUBECTL_AUTH_PLUGIN = "/usr/lib/google-cloud-sdk/bin"
+        
     }
 
     stages{
@@ -347,17 +380,37 @@ pipeline {
         }
 
 
-        stage('Deploying to Kubernetes'){
-            steps{
-                withCredentials([file(credentialsId:'gcp-key' , variable: 'GOOGLE_APPLICATION_CREDENTIALS' )]){
-                    script{
-                        echo 'Deploying to Kubernetes'
+        stages {
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: 'gcp-key', variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+                    script {
                         sh '''
-                        export PATH=$PATH:${GCLOUD_PATH}:${KUBECTL_AUTH_PLUGIN}
+                        export PATH=$PATH:${GCLOUD_PATH}
+
+                        # Authenticate with GCP
                         gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
                         gcloud config set project ${GCP_PROJECT}
+
+                        # Ensure kubectl is installed (latest stable)
+                       if ! command -v kubectl &> /dev/null; then
+                        KUBECTL_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt)
+                        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+                        chmod +x kubectl
+                        mkdir -p $WORKSPACE/bin
+                        mv kubectl $WORKSPACE/bin/
+                        export PATH=$WORKSPACE/bin:$PATH
+                        fi
+
+                        # Get cluster credentials
                         gcloud container clusters get-credentials ml-app --region us-central1
+
+                        # Apply deployment
                         kubectl apply -f deployment.yaml
+
+                        # Restart deployment to pull latest image
+                        kubectl rollout restart deployment/ml-app
+                        kubectl rollout status deployment/ml-app
                         '''
                     }
                 }
@@ -377,7 +430,14 @@ This setup fully automates:
 * Installing dependencies.
 * Building & pushing Docker images to **GCR**.
 * Deploying the application to **GKE**.
+* for url endpoint go inside the workload and you will find IP address
 
 You now have a complete **CI/CD pipeline** running on **Google Cloud**.
+
+# Final Output Image
+
+Here’s the system architecture:
+
+![System Architecture](./image.png)
 
 
